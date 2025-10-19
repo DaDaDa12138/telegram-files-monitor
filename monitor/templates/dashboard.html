@@ -201,6 +201,94 @@
             </div>
         </div>
 
+        <!-- 云存储配置 -->
+        <div class="bg-white shadow rounded-lg mb-6">
+            <div class="px-4 py-5 sm:px-6 border-b border-gray-200">
+                <div class="flex items-center justify-between">
+                    <h3 class="text-lg leading-6 font-medium text-gray-900">云存储配置</h3>
+                    <button onclick="loadRcloneRemotes()" class="px-3 py-1 text-xs font-medium rounded-md bg-indigo-600 text-white hover:bg-indigo-700">
+                        刷新
+                    </button>
+                </div>
+            </div>
+            <div class="px-4 py-5 sm:p-6">
+                <!-- 当前配置显示 -->
+                <div class="mb-4 p-4 bg-gray-50 rounded-lg">
+                    <div class="text-sm font-medium text-gray-700 mb-2">当前配置</div>
+                    <div class="text-sm text-gray-600">
+                        <span class="font-medium">远程存储：</span><span id="currentRemote" class="text-blue-600">加载中...</span>
+                    </div>
+                    <div class="text-sm text-gray-600 mt-1">
+                        <span class="font-medium">目标路径：</span><span id="currentPath" class="text-blue-600">加载中...</span>
+                    </div>
+                </div>
+
+                <!-- 配置表单 -->
+                <div class="space-y-4">
+                    <!-- 选择远程存储 -->
+                    <div>
+                        <label for="remoteSelect" class="block text-sm font-medium text-gray-700 mb-2">
+                            选择云存储
+                        </label>
+                        <select id="remoteSelect"
+                                onchange="onRemoteSelect()"
+                                class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md border">
+                            <option value="">-- 请选择云存储 --</option>
+                        </select>
+                        <p class="mt-1 text-xs text-gray-500">当前已配置的 rclone 远程存储列表</p>
+                    </div>
+
+                    <!-- 输入目标路径 -->
+                    <div>
+                        <label for="targetPath" class="block text-sm font-medium text-gray-700 mb-2">
+                            目标路径
+                        </label>
+                        <input type="text"
+                               id="targetPath"
+                               placeholder="/Media/tg files/data"
+                               class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+                        <p class="mt-1 text-xs text-gray-500">目标云存储中的文件夹路径，以 / 开头</p>
+                    </div>
+
+                    <!-- 路径预览 -->
+                    <div class="p-3 bg-blue-50 rounded-md" id="pathPreview" style="display: none;">
+                        <div class="text-sm font-medium text-blue-900 mb-1">完整路径预览：</div>
+                        <div class="text-sm text-blue-700 font-mono" id="fullPathPreview">-</div>
+                    </div>
+
+                    <!-- 操作按钮 -->
+                    <div class="flex justify-end space-x-3">
+                        <button onclick="testConnection()"
+                                id="testBtn"
+                                class="px-4 py-2 text-sm font-medium rounded-md border border-gray-300 text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                            测试连接
+                        </button>
+                        <button onclick="saveCloudConfig()"
+                                id="saveCloudConfigBtn"
+                                class="px-4 py-2 text-sm font-medium rounded-md border border-transparent text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                            保存配置
+                        </button>
+                    </div>
+
+                    <!-- 提示信息 -->
+                    <div id="cloudConfigMessage" class="hidden mt-4">
+                        <div class="rounded-md p-4" id="cloudConfigMessageContent">
+                            <div class="flex">
+                                <div class="flex-shrink-0">
+                                    <svg id="cloudConfigMessageIcon" class="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
+                                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
+                                    </svg>
+                                </div>
+                                <div class="ml-3">
+                                    <p class="text-sm font-medium" id="cloudConfigMessageText">-</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- 上传进度 -->
         <div id="uploadProgressSection" class="bg-white shadow rounded-lg mb-6 hidden">
             <div class="px-4 py-5 sm:px-6 border-b border-gray-200">
@@ -733,6 +821,193 @@
             resourceChart.update();
         }
 
+        // ==================== 云存储配置功能 ====================
+
+        // 加载 rclone 远程存储列表
+        async function loadRcloneRemotes() {
+            try {
+                const response = await axios.get('/api/rclone/remotes');
+                if (response.data.success) {
+                    const remotes = response.data.remotes;
+                    const select = document.getElementById('remoteSelect');
+
+                    // 清空现有选项
+                    select.innerHTML = '<option value="">-- 请选择云存储 --</option>';
+
+                    // 添加远程存储选项
+                    remotes.forEach(remote => {
+                        const option = document.createElement('option');
+                        option.value = remote.name;
+                        option.textContent = `${remote.name} (${remote.type})`;
+                        select.appendChild(option);
+                    });
+
+                    showCloudConfigMessage('success', '已加载远程存储列表');
+                } else {
+                    showCloudConfigMessage('error', response.data.message || '加载远程存储失败');
+                }
+            } catch (error) {
+                console.error('加载远程存储失败:', error);
+                showCloudConfigMessage('error', error.response?.data?.message || '加载远程存储失败');
+            }
+        }
+
+        // 加载当前配置
+        async function loadCurrentCloudConfig() {
+            try {
+                const response = await axios.get('/api/rclone/current-config');
+                if (response.data.success) {
+                    document.getElementById('currentRemote').textContent = response.data.remote || '未配置';
+                    document.getElementById('currentPath').textContent = response.data.path || '未配置';
+                }
+            } catch (error) {
+                console.error('加载当前配置失败:', error);
+                document.getElementById('currentRemote').textContent = '加载失败';
+                document.getElementById('currentPath').textContent = '加载失败';
+            }
+        }
+
+        // 远程存储选择变化
+        function onRemoteSelect() {
+            const remote = document.getElementById('remoteSelect').value;
+            const path = document.getElementById('targetPath').value;
+
+            if (remote) {
+                updatePathPreview(remote, path);
+            } else {
+                document.getElementById('pathPreview').style.display = 'none';
+            }
+        }
+
+        // 路径输入变化
+        document.addEventListener('DOMContentLoaded', () => {
+            const targetPath = document.getElementById('targetPath');
+            if (targetPath) {
+                targetPath.addEventListener('input', () => {
+                    const remote = document.getElementById('remoteSelect').value;
+                    const path = targetPath.value;
+                    if (remote) {
+                        updatePathPreview(remote, path);
+                    }
+                });
+            }
+        });
+
+        // 更新路径预览
+        function updatePathPreview(remote, path) {
+            if (!path.startsWith('/') && path) {
+                path = '/' + path;
+            }
+            const fullPath = `${remote}:${path}`;
+            document.getElementById('fullPathPreview').textContent = fullPath;
+            document.getElementById('pathPreview').style.display = 'block';
+        }
+
+        // 测试连接
+        async function testConnection() {
+            const remote = document.getElementById('remoteSelect').value;
+            const path = document.getElementById('targetPath').value;
+
+            if (!remote) {
+                showCloudConfigMessage('error', '请先选择云存储');
+                return;
+            }
+
+            const testBtn = document.getElementById('testBtn');
+            testBtn.disabled = true;
+            testBtn.textContent = '测试中...';
+
+            try {
+                const response = await axios.post('/api/rclone/browse', {
+                    remote: remote,
+                    path: path || '/'
+                });
+
+                if (response.data.success) {
+                    const dirCount = response.data.directories.length;
+                    showCloudConfigMessage('success', `连接成功！找到 ${dirCount} 个子目录`);
+                } else {
+                    showCloudConfigMessage('error', response.data.message || '连接失败');
+                }
+            } catch (error) {
+                console.error('测试连接失败:', error);
+                showCloudConfigMessage('error', error.response?.data?.message || '连接测试失败');
+            } finally {
+                testBtn.disabled = false;
+                testBtn.textContent = '测试连接';
+            }
+        }
+
+        // 保存云存储配置
+        async function saveCloudConfig() {
+            const remote = document.getElementById('remoteSelect').value;
+            const path = document.getElementById('targetPath').value;
+
+            if (!remote) {
+                showCloudConfigMessage('error', '请先选择云存储');
+                return;
+            }
+
+            // 确认对话框
+            if (!confirm(`确定要更改云存储配置吗？\n\n远程存储: ${remote}\n目标路径: ${path || '/'}\n\n注意：保存后将自动重启同步服务`)) {
+                return;
+            }
+
+            const saveBtn = document.getElementById('saveCloudConfigBtn');
+            saveBtn.disabled = true;
+            saveBtn.textContent = '保存中...';
+
+            try {
+                const response = await axios.post('/api/rclone/update-config', {
+                    remote: remote,
+                    path: path
+                });
+
+                if (response.data.success) {
+                    showCloudConfigMessage('success', response.data.message || '配置保存成功！');
+
+                    // 更新当前配置显示
+                    setTimeout(() => {
+                        loadCurrentCloudConfig();
+                        updateDashboard();
+                    }, 2000);
+                } else {
+                    showCloudConfigMessage('error', response.data.message || '保存失败');
+                }
+            } catch (error) {
+                console.error('保存配置失败:', error);
+                showCloudConfigMessage('error', error.response?.data?.message || '保存配置失败');
+            } finally {
+                saveBtn.disabled = false;
+                saveBtn.textContent = '保存配置';
+            }
+        }
+
+        // 显示云存储配置消息
+        function showCloudConfigMessage(type, message) {
+            const messageDiv = document.getElementById('cloudConfigMessage');
+            const contentDiv = document.getElementById('cloudConfigMessageContent');
+            const textP = document.getElementById('cloudConfigMessageText');
+
+            messageDiv.classList.remove('hidden');
+            textP.textContent = message;
+
+            if (type === 'success') {
+                contentDiv.className = 'rounded-md p-4 bg-green-50';
+                textP.className = 'text-sm font-medium text-green-800';
+            } else {
+                contentDiv.className = 'rounded-md p-4 bg-red-50';
+                textP.className = 'text-sm font-medium text-red-800';
+            }
+
+            // 5秒后自动隐藏
+            setTimeout(() => {
+                messageDiv.classList.add('hidden');
+            }, 5000);
+        }
+
+        // ==================== 初始化 ====================
+
         // 初始化
         document.addEventListener('DOMContentLoaded', async () => {
             // 初始化图表
@@ -741,6 +1016,8 @@
             // 加载初始数据
             await updateDashboard();
             await loadLogs();
+            await loadRcloneRemotes();  // 加载云存储列表
+            await loadCurrentCloudConfig();  // 加载当前配置
 
             // 设置定时更新
             updateInterval = setInterval(() => {

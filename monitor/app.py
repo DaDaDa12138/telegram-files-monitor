@@ -568,5 +568,232 @@ def api_dashboard():
     })
 
 
+@app.route('/api/rclone/remotes')
+@login_required
+def api_rclone_remotes():
+    """获取所有 rclone 远程存储列表"""
+    try:
+        result = subprocess.run(
+            ['rclone', 'listremotes'],
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
+        if result.returncode == 0:
+            # 解析输出，每行是一个远程名称（带冒号）
+            remotes = []
+            for line in result.stdout.strip().split('\n'):
+                if line:
+                    remote_name = line.rstrip(':')
+                    # 获取远程类型
+                    try:
+                        config_result = subprocess.run(
+                            ['rclone', 'config', 'dump'],
+                            capture_output=True,
+                            text=True,
+                            timeout=5
+                        )
+                        if config_result.returncode == 0:
+                            import json
+                            config_data = json.loads(config_result.stdout)
+                            remote_type = config_data.get(remote_name, {}).get('type', 'unknown')
+                        else:
+                            remote_type = 'unknown'
+                    except:
+                        remote_type = 'unknown'
+
+                    remotes.append({
+                        'name': remote_name,
+                        'type': remote_type,
+                        'full_name': line
+                    })
+
+            return jsonify({
+                'success': True,
+                'remotes': remotes
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'message': 'rclone 命令执行失败',
+                'error': result.stderr
+            }), 500
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': f'获取远程存储失败: {str(e)}'
+        }), 500
+
+
+@app.route('/api/rclone/current-config')
+@login_required
+def api_rclone_current_config():
+    """获取当前的云存储配置"""
+    try:
+        config = read_config()
+        dest_dir = config.get('DEST_DIR', '')
+
+        # 解析 DEST_DIR，格式为 "remote:path"
+        if ':' in dest_dir:
+            remote, path = dest_dir.split(':', 1)
+        else:
+            remote = ''
+            path = dest_dir
+
+        return jsonify({
+            'success': True,
+            'remote': remote,
+            'path': path,
+            'dest_dir': dest_dir,
+            'source_dir': config.get('SOURCE_DIR', '')
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': f'获取配置失败: {str(e)}'
+        }), 500
+
+
+@app.route('/api/rclone/browse', methods=['POST'])
+@login_required
+def api_rclone_browse():
+    """浏览远程存储目录"""
+    try:
+        data = request.json
+        remote = data.get('remote', '')
+        path = data.get('path', '')
+
+        if not remote:
+            return jsonify({
+                'success': False,
+                'message': '远程存储名称不能为空'
+            }), 400
+
+        # 构建完整路径
+        full_path = f"{remote}:{path}"
+
+        # 使用 rclone lsd 列出目录
+        result = subprocess.run(
+            ['rclone', 'lsd', full_path],
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
+
+        if result.returncode == 0:
+            directories = []
+            for line in result.stdout.strip().split('\n'):
+                if line:
+                    # 解析目录名（格式：时间戳 目录名）
+                    parts = line.split()
+                    if len(parts) >= 5:
+                        dir_name = ' '.join(parts[4:])
+                        directories.append(dir_name)
+
+            return jsonify({
+                'success': True,
+                'directories': directories,
+                'current_path': path
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'message': 'rclone 执行失败',
+                'error': result.stderr
+            }), 500
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': f'浏览目录失败: {str(e)}'
+        }), 500
+
+
+@app.route('/api/rclone/update-config', methods=['POST'])
+@login_required
+def api_rclone_update_config():
+    """更新云存储配置"""
+    try:
+        data = request.json
+        remote = data.get('remote', '').strip()
+        path = data.get('path', '').strip()
+
+        if not remote:
+            return jsonify({
+                'success': False,
+                'message': '远程存储名称不能为空'
+            }), 400
+
+        # 确保路径以 / 开头
+        if path and not path.startswith('/'):
+            path = '/' + path
+
+        # 构建新的 DEST_DIR
+        new_dest_dir = f"{remote}:{path}"
+
+        # 测试连接
+        test_result = subprocess.run(
+            ['rclone', 'lsd', new_dest_dir],
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
+
+        if test_result.returncode != 0:
+            return jsonify({
+                'success': False,
+                'message': '无法访问指定的远程路径，请检查配置',
+                'error': test_result.stderr
+            }), 400
+
+        # 读取当前配置文件
+        config_lines = []
+        if os.path.exists(CONFIG_FILE):
+            with open(CONFIG_FILE, 'r') as f:
+                config_lines = f.readlines()
+
+        # 更新 DEST_DIR
+        dest_dir_found = False
+        for i, line in enumerate(config_lines):
+            if line.strip().startswith('DEST_DIR='):
+                config_lines[i] = f'DEST_DIR="{new_dest_dir}"\n'
+                dest_dir_found = True
+                break
+
+        # 如果没有找到，添加到文件末尾
+        if not dest_dir_found:
+            config_lines.append(f'DEST_DIR="{new_dest_dir}"\n')
+
+        # 写回配置文件
+        with open(CONFIG_FILE, 'w') as f:
+            f.writelines(config_lines)
+
+        # 重启同步服务
+        restart_result = subprocess.run(
+            ['systemctl', 'restart', 'telegram-files-sync'],
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
+
+        if restart_result.returncode == 0:
+            return jsonify({
+                'success': True,
+                'message': '云存储配置已更新并重启服务',
+                'new_dest_dir': new_dest_dir
+            })
+        else:
+            return jsonify({
+                'success': True,
+                'message': '配置已更新，但重启服务失败（请手动重启）',
+                'warning': restart_result.stderr,
+                'new_dest_dir': new_dest_dir
+            })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': f'更新配置失败: {str(e)}'
+        }), 500
+
+
 if __name__ == '__main__':
     app.run(host='127.0.0.1', port=5000, debug=False)
