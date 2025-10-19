@@ -1,0 +1,20 @@
+services:
+  telegram-files:
+    container_name: telegram-files
+    image: ghcr.io/jarvis2f/telegram-files:latest
+    restart: always
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1/api/health"]
+      interval: 10s
+      retries: 3
+      timeout: 10s
+      start_period: 10s
+    environment:
+      APP_ENV: "prod"
+      APP_ROOT: "/app/data"
+      TELEGRAM_API_ID: ${TELEGRAM_API_ID}
+      TELEGRAM_API_HASH: ${TELEGRAM_API_HASH}
+    ports:
+      - "127.0.0.1:6543:80"
+    volumes:
+      - ./data:/app/data

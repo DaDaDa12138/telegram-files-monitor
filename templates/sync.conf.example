@@ -1,0 +1,39 @@
+# Telegram Files 同步配置示例
+# 安装时会自动生成实际配置
+
+# 源目录（Docker 容器下载目录）
+SOURCE_DIR="/opt/telegram-files/data/downloads"
+
+# 目标目录（rclone 远程路径）
+DEST_DIR="gd:/Media/tg files/data"
+
+# 日志文件
+LOG_FILE="/var/log/telegram-files-sync.log"
+RCLONE_LOG_FILE="/var/log/rclone-sync.log"
+
+# 磁盘空间阈值（百分比）
+DISK_THRESHOLD=80
+
+# 最小可用空间（GB）
+MIN_FREE_SPACE_GB=2
+
+# 带宽限制（如: 5M, 10M, 100M）
+BANDWIDTH_LIMIT="5M"
+
+# 并发传输数
+CONCURRENT_TRANSFERS=2
+
+# 并发检查数
+CONCURRENT_CHECKERS=4
+
+# 单次最大文件数
+MAX_FILES_PER_SYNC=50
+
+# 传输延迟（秒）
+TRANSFER_DELAY=30
+
+# 监控间隔（秒）
+MONITOR_INTERVAL=60
+
+# 文件最小年龄（秒，避免传输正在写入的文件）
+FILE_MIN_AGE=60

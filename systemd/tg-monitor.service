@@ -1,0 +1,34 @@
+[Unit]
+Description=Telegram Files Monitor Dashboard
+Documentation=https://github.com/jarvis2f/telegram-files
+After=network.target telegram-files-sync.service
+Wants=telegram-files-sync.service
+
+[Service]
+Type=simple
+User=root
+Group=root
+WorkingDirectory=/opt/tg-monitor
+ExecStart=/usr/bin/python3 /opt/tg-monitor/app.py
+Restart=always
+RestartSec=10
+
+# 环境变量
+Environment="FLASK_APP=app.py"
+Environment="FLASK_ENV=production"
+Environment="SECRET_KEY=change-this-to-a-random-secret-key-in-production"
+
+# 日志
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=tg-monitor
+
+# 安全设置
+PrivateTmp=true
+NoNewPrivileges=true
+
+# 资源限制
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target
